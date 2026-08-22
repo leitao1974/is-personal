@@ -1,51 +1,86 @@
 import streamlit as st
 from groq import Groq
 
-st.set_page_config(page_title="LLM Grátis na Nuvem", page_icon="⚡", layout="centered")
-st.title("Chat com Llama 3.3 70B (Via Groq)")
+# Configuração da página
+st.set_page_config(
+    page_title="Chat Assistant - Groq",
+    page_icon="🤖",
+    layout="centered"
+)
 
-# Lê a API Key guardada nos Segredos do Streamlit
+st.title("🤖 Chat Assistant")
+
+# Leitura da API Key a partir dos Segredos do Streamlit
 groq_api_key = st.secrets.get("GROQ_API_KEY")
 
 if not groq_api_key:
-    st.error("Chave GROQ_API_KEY não configurada nos segredos.")
+    st.error("Chave 'GROQ_API_KEY' não configurada nos Secrets do Streamlit.")
+    st.info("Aceda a Settings > Secrets na sua aplicação Streamlit e adicione: GROQ_API_KEY = 'gsk_...'")
     st.stop()
 
+# Inicialização do cliente Groq
 client = Groq(api_key=groq_api_key)
 
-# Inicializa o histórico de mensagens
+# Barra lateral para seleção de modelo e parâmetros
+with st.sidebar:
+    st.header("Configurações")
+    selected_model = st.selectbox(
+        "Selecione o Modelo:",
+        options=[
+            "llama-3.1-8b-instant",
+            "llama-3.1-70b-versatile",
+            "deepseek-r1-distill-llama-70b",
+            "mixtral-8x7b-32768"
+        ],
+        index=0
+    )
+    
+    temperature = st.slider("Temperatura (Criatividade):", min_value=0.0, max_value=1.0, value=0.6, step=0.1)
+    
+    if st.button("Limpar Conversa"):
+        st.session_state.messages = []
+        st.rerun()
+
+# Inicialização do histórico de mensagens
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Mostra histórico na interface
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+# Exibição do histórico de mensagens no ecrã
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-# Processa novo prompt
-if prompt := st.chat_input("Escreva uma mensagem..."):
+# Caixa de entrada de texto
+if prompt := st.chat_input("Escreva a sua mensagem..."):
+    # Adiciona e apresenta a mensagem do utilizador
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # Geração da resposta da IA com streaming
     with st.chat_message("assistant"):
         response_placeholder = st.empty()
-        full_text = ""
+        full_response = ""
         
-        # Chamada com streaming para resposta instantânea
-        stream = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=st.session_state.messages,
-            temperature=0.6,
-            stream=True,
-        )
-        
-        for chunk in stream:
-            content = chunk.choices[0].delta.content
-            if content:
-                full_text += content
-                response_placeholder.markdown(full_text + "▌")
-                
-        response_placeholder.markdown(full_text)
-
-    st.session_state.messages.append({"role": "assistant", "content": full_text})
+        try:
+            stream = client.chat.completions.create(
+                model=selected_model,
+                messages=[
+                    {"role": m["role"], "content": m["content"]}
+                    for m in st.session_state.messages
+                ],
+                temperature=temperature,
+                stream=True
+            )
+            
+            for chunk in stream:
+                content = chunk.choices[0].delta.content
+                if content:
+                    full_response += content
+                    response_placeholder.markdown(full_response + "▌")
+                    
+            response_placeholder.markdown(full_response)
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+            
+        except Exception as e:
+            response_placeholder.error(f"Ocorreu um erro: {e}")
