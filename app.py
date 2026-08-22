@@ -13,12 +13,27 @@ if not gemini_api_key:
 
 genai.configure(api_key=gemini_api_key)
 
+# Obtém dinamicamente os modelos de geração de texto ativos
+@st.cache_data(ttl=3600)
+def get_gemini_models():
+    try:
+        models = [
+            m.name.replace("models/", "") 
+            for m in genai.list_models() 
+            if "generateContent" in m.supported_generation_methods
+        ]
+        return models if models else ["gemini-1.5-flash", "gemini-1.5-pro"]
+    except Exception:
+        return ["gemini-1.5-flash", "gemini-1.5-pro"]
+
+available_models = get_gemini_models()
+
 # Barra lateral
 with st.sidebar:
     st.header("Configurações")
     model_choice = st.selectbox(
-        "Modelo:",
-        ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"],
+        "Selecione o Modelo:",
+        options=available_models,
         index=0
     )
     if st.button("Limpar Conversa"):
