@@ -1,5 +1,6 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 st.set_page_config(
     page_title="Gemini Deep Search Assistant",
@@ -16,33 +17,22 @@ if not gemini_api_key:
     st.error("Chave GEMINI_API_KEY não configurada nos Secrets.")
     st.stop()
 
-genai.configure(api_key=gemini_api_key)
-
-# Obtém dinamicamente os modelos de geração de texto ativos
-@st.cache_data(ttl=3600)
-def get_gemini_models():
-    try:
-        models = [
-            m.name.replace("models/", "") 
-            for m in genai.list_models() 
-            if "generateContent" in m.supported_generation_methods
-        ]
-        return models if models else ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
-    except Exception:
-        return ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
-
-available_models = get_gemini_models()
+# Inicializa o cliente do novo SDK oficial
+client = genai.Client(api_key=gemini_api_key)
 
 # Barra lateral
 with st.sidebar:
     st.header("Configurações")
-    model_choice = st.selectbox(
+    selected_model = st.selectbox(
         "Selecione o Modelo:",
-        options=available_models,
+        options=[
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-1.5-flash"
+        ],
         index=0
     )
     
-    # Interruptor para ativar Pesquisa na Web / Deep Search
     enable_web_search = st.toggle("🌐 Ativar Google Search (Deep Search)", value=True)
     
     if st.button("Limpar Conversa"):
@@ -58,7 +48,7 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Processamento da entrada do utilizador
+# Processamento do prompt
 if prompt := st.chat_input("Faça uma pergunta com pesquisa em tempo real..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -68,25 +58,29 @@ if prompt := st.chat_input("Faça uma pergunta com pesquisa em tempo real..."):
         response_box = st.empty()
         
         try:
-            # Configura a ferramenta correta de Web Grounding para o SDK
-            tools = [{"google_search_retrieval": {}}] if enable_web_search else None
-            
-            model = genai.GenerativeModel(
-                model_name=model_choice,
-                tools=tools
+            # Configura a ferramenta Google Search
+            tools = [types.Tool(google_search=types.GoogleSearch())] if enable_web_search else []
+            config = types.GenerateContentConfig(
+                tools=tools,
+                temperature=0.7
             )
-            
-            # Formata histórico no padrão da biblioteca do Google
-            history_payload = []
-            for m in st.session_state.messages[:-1]:
-                role = "user" if m["role"] == "user" else "model"
-                history_payload.append({"role": role, "parts": [m["content"]]})
 
-            chat = model.start_chat(history=history_payload)
-            
-            # Com Grounding ativo, a geração completa garante a consolidação das fontes
+            # Formata histórico no padrão Content
+            contents = []
+            for m in st.session_state.messages:
+                contents.append(
+                    types.Content(
+                        role=m["role"],
+                        parts=[types.Part.from_text(text=m["content"])]
+                    )
+                )
+
             with st.spinner("A pesquisar na web e a gerar resposta..."):
-                response = chat.send_message(prompt)
+                response = client.models.generate_content(
+                    model=selected_model,
+                    contents=contents,
+                    config=config
+                )
                 full_text = response.text
 
             response_box.markdown(full_text)
