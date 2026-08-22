@@ -1,93 +1,68 @@
 import streamlit as st
-from groq import Groq
+import google.generativeai as genai
 
-# Configuração da página
-st.set_page_config(
-    page_title="Chat Assistant - Groq",
-    page_icon="🤖",
-    layout="centered"
-)
+st.set_page_config(page_title="Gemini Free Assistant", page_icon="✨", layout="centered")
+st.title("✨ Assistente Inteligente (Gemini Gratuito)")
 
-st.title("🤖 Chat Assistant")
+# Configuração da API Key
+gemini_api_key = st.secrets.get("GEMINI_API_KEY")
 
-# Leitura da API Key a partir dos Segredos do Streamlit
-groq_api_key = st.secrets.get("GROQ_API_KEY")
-
-if not groq_api_key:
-    st.error("Chave 'GROQ_API_KEY' não configurada nos Secrets do Streamlit.")
-    st.info("Aceda a Settings > Secrets na sua aplicação Streamlit e adicione: GROQ_API_KEY = 'gsk_...'")
+if not gemini_api_key:
+    st.error("Chave GEMINI_API_KEY não configurada nos Secrets.")
     st.stop()
 
-# Inicialização do cliente Groq
-client = Groq(api_key=groq_api_key)
+genai.configure(api_key=gemini_api_key)
 
-# Função para obter a lista de modelos ativos dinamicamente
-@st.cache_data(ttl=3600)
-def get_available_models():
-    try:
-        models_data = client.models.list()
-        # Filtra apenas modelos de texto/chat (exclui modelos de áudio/whisper)
-        chat_models = [m.id for m in models_data.data if "whisper" not in m.id]
-        return sorted(chat_models) if chat_models else ["llama-3.3-70b-versatile"]
-    except Exception:
-        return ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "mixtral-8x7b-32768"]
-
-available_models = get_available_models()
-
-# Barra lateral para seleção de modelo e parâmetros
+# Barra lateral
 with st.sidebar:
     st.header("Configurações")
-    selected_model = st.selectbox(
-        "Selecione o Modelo Ativo:",
-        options=available_models,
+    model_choice = st.selectbox(
+        "Modelo:",
+        ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"],
         index=0
     )
-    
-    temperature = st.slider("Temperatura (Criatividade):", min_value=0.0, max_value=1.0, value=0.6, step=0.1)
-    
     if st.button("Limpar Conversa"):
         st.session_state.messages = []
         st.rerun()
 
-# Inicialização do histórico de mensagens
+# Inicialização do histórico
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Exibição do histórico de mensagens no ecrã
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# Exibição das mensagens
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-# Caixa de entrada de texto
-if prompt := st.chat_input("Escreva a sua mensagem..."):
+# Processamento do prompt
+if prompt := st.chat_input("Como posso ajudar hoje?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Geração da resposta da IA com streaming
     with st.chat_message("assistant"):
-        response_placeholder = st.empty()
-        full_response = ""
+        response_box = st.empty()
+        full_text = ""
         
         try:
-            stream = client.chat.completions.create(
-                model=selected_model,
-                messages=[
-                    {"role": m["role"], "content": m["content"]}
-                    for m in st.session_state.messages
-                ],
-                temperature=temperature,
-                stream=True
-            )
+            model = genai.GenerativeModel(model_choice)
             
-            for chunk in stream:
-                content = chunk.choices[0].delta.content
-                if content:
-                    full_response += content
-                    response_placeholder.markdown(full_response + "▌")
-                    
-            response_placeholder.markdown(full_response)
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-            
+            # Formata histórico no padrão da biblioteca do Google
+            history_payload = []
+            for m in st.session_state.messages[:-1]:
+                role = "user" if m["role"] == "user" else "model"
+                history_payload.append({"role": role, "parts": [m["content"]]})
+
+            chat = model.start_chat(history=history_payload)
+            response = chat.send_message(prompt, stream=True)
+
+            for chunk in response:
+                if chunk.text:
+                    full_text += chunk.text
+                    response_box.markdown(full_text + "▌")
+
+            response_box.markdown(full_text)
+            st.session_state.messages.append({"role": "assistant", "content": full_text})
+
         except Exception as e:
-            response_placeholder.error(f"Ocorreu um erro: {e}")
+            response_box.error(f"Erro: {e}")
