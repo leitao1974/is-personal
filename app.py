@@ -28,9 +28,9 @@ with st.sidebar:
         "Selecione o Modelo:",
         options=[
             "llama-3.1-8b-instant",
-            "llama-3.1-70b-versatile",
-            "deepseek-r1-distill-llama-70b",
-            "mixtral-8x7b-32768"
+            "llama3-70b-8192",
+            "llama3-8b-8192",
+            "gemma2-9b-it"
         ],
         index=0
     )
