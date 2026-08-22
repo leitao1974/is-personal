@@ -21,17 +21,25 @@ if not groq_api_key:
 # Inicialização do cliente Groq
 client = Groq(api_key=groq_api_key)
 
+# Função para obter a lista de modelos ativos dinamicamente
+@st.cache_data(ttl=3600)
+def get_available_models():
+    try:
+        models_data = client.models.list()
+        # Filtra apenas modelos de texto/chat (exclui modelos de áudio/whisper)
+        chat_models = [m.id for m in models_data.data if "whisper" not in m.id]
+        return sorted(chat_models) if chat_models else ["llama-3.3-70b-versatile"]
+    except Exception:
+        return ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "mixtral-8x7b-32768"]
+
+available_models = get_available_models()
+
 # Barra lateral para seleção de modelo e parâmetros
 with st.sidebar:
     st.header("Configurações")
     selected_model = st.selectbox(
-        "Selecione o Modelo:",
-        options=[
-            "llama-3.1-8b-instant",
-            "llama3-70b-8192",
-            "llama3-8b-8192",
-            "gemma2-9b-it"
-        ],
+        "Selecione o Modelo Ativo:",
+        options=available_models,
         index=0
     )
     
@@ -52,7 +60,6 @@ for message in st.session_state.messages:
 
 # Caixa de entrada de texto
 if prompt := st.chat_input("Escreva a sua mensagem..."):
-    # Adiciona e apresenta a mensagem do utilizador
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
