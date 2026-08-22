@@ -27,9 +27,9 @@ def get_gemini_models():
             for m in genai.list_models() 
             if "generateContent" in m.supported_generation_methods
         ]
-        return models if models else ["gemini-1.5-flash", "gemini-1.5-pro"]
+        return models if models else ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
     except Exception:
-        return ["gemini-1.5-flash", "gemini-1.5-pro"]
+        return ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 
 available_models = get_gemini_models()
 
@@ -66,11 +66,10 @@ if prompt := st.chat_input("Faça uma pergunta com pesquisa em tempo real..."):
 
     with st.chat_message("assistant"):
         response_box = st.empty()
-        full_text = ""
         
         try:
-            # Configura as ferramentas (Tools) do modelo
-            tools = [{"google_search": {}}] if enable_web_search else None
+            # Configura a ferramenta correta de Web Grounding para o SDK
+            tools = [{"google_search_retrieval": {}}] if enable_web_search else None
             
             model = genai.GenerativeModel(
                 model_name=model_choice,
@@ -84,12 +83,11 @@ if prompt := st.chat_input("Faça uma pergunta com pesquisa em tempo real..."):
                 history_payload.append({"role": role, "parts": [m["content"]]})
 
             chat = model.start_chat(history=history_payload)
-            response = chat.send_message(prompt, stream=True)
-
-            for chunk in response:
-                if chunk.text:
-                    full_text += chunk.text
-                    response_box.markdown(full_text + "▌")
+            
+            # Com Grounding ativo, a geração completa garante a consolidação das fontes
+            with st.spinner("A pesquisar na web e a gerar resposta..."):
+                response = chat.send_message(prompt)
+                full_text = response.text
 
             response_box.markdown(full_text)
             st.session_state.messages.append({"role": "assistant", "content": full_text})
