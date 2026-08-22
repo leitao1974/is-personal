@@ -1,8 +1,13 @@
 import streamlit as st
 import google.generativeai as genai
 
-st.set_page_config(page_title="Gemini Free Assistant", page_icon="✨", layout="centered")
-st.title("✨ Assistente Inteligente (Gemini Gratuito)")
+st.set_page_config(
+    page_title="Gemini Deep Search Assistant",
+    page_icon="🔍",
+    layout="centered"
+)
+
+st.title("🔍 Assistente com Deep Search (Web Grounding)")
 
 # Configuração da API Key
 gemini_api_key = st.secrets.get("GEMINI_API_KEY")
@@ -36,6 +41,10 @@ with st.sidebar:
         options=available_models,
         index=0
     )
+    
+    # Interruptor para ativar Pesquisa na Web / Deep Search
+    enable_web_search = st.toggle("🌐 Ativar Google Search (Deep Search)", value=True)
+    
     if st.button("Limpar Conversa"):
         st.session_state.messages = []
         st.rerun()
@@ -44,13 +53,13 @@ with st.sidebar:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Exibição das mensagens
+# Exibição do histórico de mensagens
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Processamento do prompt
-if prompt := st.chat_input("Como posso ajudar hoje?"):
+# Processamento da entrada do utilizador
+if prompt := st.chat_input("Faça uma pergunta com pesquisa em tempo real..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -60,7 +69,13 @@ if prompt := st.chat_input("Como posso ajudar hoje?"):
         full_text = ""
         
         try:
-            model = genai.GenerativeModel(model_choice)
+            # Configura as ferramentas (Tools) do modelo
+            tools = [{"google_search": {}}] if enable_web_search else None
+            
+            model = genai.GenerativeModel(
+                model_name=model_choice,
+                tools=tools
+            )
             
             # Formata histórico no padrão da biblioteca do Google
             history_payload = []
